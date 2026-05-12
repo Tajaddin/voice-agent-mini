@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-agent-mini"
+version = "0.1.0"
+description = "Speech-to-text -> LLM -> text-to-speech pipeline with barge-in interruption, per-stage latency budgets, and end-to-end voice-to-voice timing."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Tajaddin Gafarov", email = "gafarovtajaddin@gmail.com"}]
+keywords = ["voice", "stt", "tts", "whisper", "llm", "barge-in", "conversational-ai", "latency"]
+dependencies = [
+    "pydantic>=2.6",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.39"]
+whisper = ["openai-whisper>=20231117", "numpy>=1.26"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+voice-agent = "voice_agent.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

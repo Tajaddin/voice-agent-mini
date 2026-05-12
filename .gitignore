@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+*.log
+*.wav
+*.mp3
+bench/results/
+.DS_Store
