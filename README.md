@@ -1,8 +1,8 @@
 # voice-agent-mini
 
-> Speech → LLM → speech pipeline with **barge-in interruption**, per-stage **latency budgets**, and an **end-to-end voice-to-voice latency** number. Pipeline overhead: **p99 = 1 ms** with zero-latency mocks. Realistic profile (STT 200 ms, LLM 250 ms, TTS 80 ms first chunk): **p50 = 559 ms, p99 = 574 ms** voice-to-voice. **25/25 tests.**
+> Speech → LLM → speech pipeline with **barge-in interruption**, per-stage **latency budgets**, and an **end-to-end voice-to-voice latency** number. Pipeline overhead: **p99 = 1 ms** with zero-latency mocks. Realistic profile (STT 200 ms, LLM 250 ms, TTS 80 ms first chunk): **p50 = 559 ms, p99 = 574 ms** voice-to-voice. **26/26 tests.**
 
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)](#tests) [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)](#tests) [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
 
 ## What's actually here
 
@@ -55,7 +55,7 @@ input audio  ───►  VAD  ───►  STT  ───►  LLM  ───�
 
 * `VAD` is a short-time-energy state machine with onset + hangover thresholds.
 * `LatencyBudget` records per-stage actuals and emits `BudgetViolation(stage, actual_ms, overage_ms)` for any breached budget.
-* `VoicePipeline.turn()` is the orchestrator. While TTS is streaming, the input is **still fed through the VAD**; a `BargeIn.START` event cancels the TTS task and returns the trace early with `cancelled=True`. The speech frames that triggered it open the next turn's utterance, so STT hears the interruption from its first frame.
+* `VoicePipeline.turn()` is the orchestrator. While TTS is streaming, the input is **still fed through the VAD**; a `BargeIn.START` event cancels the TTS task and returns the trace early with `cancelled=True`. The speech frames that triggered it open the next turn's utterance, so STT hears the interruption from its first frame. That carried speech and the VAD state live on the pipeline, so use one pipeline per conversation, or call `reset()` before reusing it for a new stream or caller.
 
 ## Backend protocols
 
@@ -150,9 +150,9 @@ tests/test_vad.py          5 passed   silence-only, onset, continue+end-after-ha
 tests/test_latency.py      4 passed   under-budget, named violations, totals
 tests/test_backends.py     4 passed   mock STT/LLM/TTS + TTS cancellation
 tests/test_pipeline.py     5 passed   happy path, STT overage, BARGE-IN, stream-without-END, tight V2V on fast mocks
-tests/test_barge_in.py     3 passed   barge-in before first audio, TTS time-to-first-audio, interruption carried to next turn
+tests/test_barge_in.py     4 passed   barge-in before first audio, TTS time-to-first-audio, interruption carried to next turn, reset()
 ─────────────────────────────────────────────
-25 passed in 1.18s
+26 passed
 ```
 
 ## Project layout
@@ -166,7 +166,7 @@ tests/test_barge_in.py     3 passed   barge-in before first audio, TTS time-to-f
 │   ├── backends.py      # STT/LLM/TTS protocols + Mock + Anthropic adapters
 │   ├── pipeline.py      # VoicePipeline + TurnTrace orchestrator with barge-in
 │   └── cli.py           # `voice-agent demo`
-├── tests/               # 25 cases across 6 files
+├── tests/               # 26 cases across 6 files
 └── bench/run_benchmark.py
 ```
 

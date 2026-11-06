@@ -78,3 +78,32 @@ async def test_speech_that_triggered_barge_in_is_transcribed_next_turn():
     await pipeline.turn(stream)
 
     assert heard[1] == [c.start_ms for c in interruption]
+
+
+@pytest.mark.asyncio
+async def test_reset_drops_the_previous_callers_speech():
+    heard: list[list[int]] = []
+
+    def transcribe(frames):
+        heard.append([c.start_ms for c in frames if c.is_speech])
+        return "ok"
+
+    pipeline = VoicePipeline(
+        MockSTT(transcribe, latency_ms=0),
+        MockLLM(latency_ms=0),
+        MockTTS(first_chunk_latency_ms=500, per_chunk_latency_ms=0),
+    )
+    first = await pipeline.turn(_stream(UTTERANCE + generate_speech(10, start_ms=1000)))
+    assert first.cancelled
+
+    # The new caller starts with silence: a VAD still "in speech" from the barge-in would
+    # end the utterance before they say anything.
+    pipeline.reset()
+    next_caller = (
+        generate_silence(15, start_ms=5000)
+        + generate_speech(4, start_ms=5300)
+        + generate_silence(15, start_ms=5380)
+    )
+    await pipeline.turn(_stream(next_caller))
+
+    assert heard[1] == [5300, 5320, 5340, 5360]

@@ -74,6 +74,15 @@ class VoicePipeline:
         self.vad = vad or VAD()
         self._barge_in_frames: list[AudioChunk] = []
 
+    def reset(self) -> None:
+        """Start a new conversation: drop speech carried over from a barge-in and VAD state.
+
+        A pipeline carries both from one ``turn()`` to the next, so call this before
+        reusing it for a new stream or caller.
+        """
+        self._barge_in_frames = []
+        self.vad.reset()
+
     async def turn(
         self,
         input_stream: AsyncIterator[AudioChunk],
