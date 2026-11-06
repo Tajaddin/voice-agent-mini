@@ -1,4 +1,4 @@
-"""Barge-in edge cases: TTS latency when it is cut off."""
+"""Barge-in edge cases: TTS latency when it is cut off, and the interrupting speech."""
 
 from __future__ import annotations
 
@@ -52,3 +52,26 @@ async def test_barge_in_records_tts_time_to_first_audio():
     assert trace.cancelled and len(trace.audio_out) >= 2
     # TTS budget is time-to-first-audio, measured from when TTS started (after the LLM).
     assert trace.latency.actuals[Stage.TTS] <= trace.first_audio_out_at_ms - trace.llm_done_at_ms
+
+
+@pytest.mark.asyncio
+async def test_speech_that_triggered_barge_in_is_transcribed_next_turn():
+    heard: list[list[int]] = []
+
+    def transcribe(frames):
+        heard.append([c.start_ms for c in frames if c.is_speech])
+        return "ok"
+
+    pipeline = VoicePipeline(
+        MockSTT(transcribe, latency_ms=0),
+        MockLLM(latency_ms=0),
+        MockTTS(first_chunk_latency_ms=500, per_chunk_latency_ms=0),
+    )
+    interruption = generate_speech(10, start_ms=1000)
+    stream = _stream(UTTERANCE + interruption + generate_silence(15, start_ms=1200))
+
+    first = await pipeline.turn(stream)
+    assert first.cancelled
+    await pipeline.turn(stream)
+
+    assert heard[1] == [c.start_ms for c in interruption]
