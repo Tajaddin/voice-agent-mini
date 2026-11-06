@@ -43,15 +43,18 @@ async def test_barge_in_records_tts_time_to_first_audio():
     pipeline = VoicePipeline(
         MockSTT(latency_ms=0),
         MockLLM(latency_ms=0),
-        MockTTS(first_chunk_latency_ms=0, per_chunk_latency_ms=50),
+        MockTTS(first_chunk_latency_ms=100, per_chunk_latency_ms=50),
     )
     # Pause before the barge-in so TTS gets several chunks out first.
     audio = UTTERANCE + generate_speech(10, start_ms=1000)
-    trace = await pipeline.turn(_stream(audio, pause_before_ms={1000: 160}))
+    trace = await pipeline.turn(_stream(audio, pause_before_ms={1000: 300}))
 
     assert trace.cancelled and len(trace.audio_out) >= 2
-    # TTS budget is time-to-first-audio, measured from when TTS started (after the LLM).
-    assert trace.latency.actuals[Stage.TTS] <= trace.first_audio_out_at_ms - trace.llm_done_at_ms
+    # TTS budget is time-to-first-audio, measured from when TTS started (after the LLM):
+    # above 0 because the first chunk takes 100 ms (Windows timers can fire up to ~31 ms
+    # early), and not the time to the last chunk.
+    tts_ms = trace.latency.actuals[Stage.TTS]
+    assert 0 < tts_ms <= trace.first_audio_out_at_ms - trace.llm_done_at_ms
 
 
 @pytest.mark.asyncio
