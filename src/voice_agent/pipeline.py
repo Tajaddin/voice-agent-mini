@@ -136,15 +136,16 @@ class VoicePipeline:
                         await tts_task
                     except asyncio.CancelledError:
                         pass
-                    self.budget.record(Stage.TTS, trace.last_audio_out_at_ms - t_tts_start)
-                    return trace
+                    break
                 if tts_task.done():
                     break
-            await tts_task
+            if not tts_task.cancelled():
+                await tts_task
         except asyncio.CancelledError:
             tts_task.cancel()
             raise
 
+        # Time to first audio; 0 when TTS produced none (e.g. barge-in came first).
         self.budget.record(
             Stage.TTS,
             (trace.first_audio_out_at_ms - t_tts_start) if trace.first_audio_out_at_ms else 0,
