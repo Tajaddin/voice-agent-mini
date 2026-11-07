@@ -9,7 +9,9 @@ A turn is:
 
 During step 4, the input stream is still fed through the VAD. If
 ``BargeIn.START`` is observed, the orchestrator cancels the TTS task and
-returns to listening — that's the barge-in path.
+returns to listening — that's the barge-in path. The speech frames that
+triggered the barge-in open the next turn's utterance, so the next STT call
+hears the user from their first word.
 
 The hero output is :class:`TurnTrace` — every timestamp + every per-stage
 latency for one turn. The bench computes voice-to-voice latency as
@@ -70,6 +72,16 @@ class VoicePipeline:
         self.tts = tts
         self.budget = budget or LatencyBudget()
         self.vad = vad or VAD()
+        self._barge_in_frames: list[AudioChunk] = []
+
+    def reset(self) -> None:
+        """Start a new conversation: drop speech carried over from a barge-in and VAD state.
+
+        A pipeline carries both from one ``turn()`` to the next, so call this before
+        reusing it for a new stream or caller.
+        """
+        self._barge_in_frames = []
+        self.vad.reset()
 
     async def turn(
         self,
@@ -77,7 +89,7 @@ class VoicePipeline:
     ) -> TurnTrace:
         trace = TurnTrace()
         trace.latency = self.budget  # share state so trace + pipeline agree
-        captured: list[AudioChunk] = []
+        captured, self._barge_in_frames = self._barge_in_frames, []
         start_time = _now_ms()
 
         # Step 1: VAD listen until END.
@@ -126,25 +138,32 @@ class VoicePipeline:
 
         # While TTS plays, keep watching for barge-in on the input stream.
         t_tts_start = _now_ms()
+        speech_run: list[AudioChunk] = []  # consecutive speech frames, i.e. the VAD onset
         try:
             async for chunk in input_stream:
                 event = self.vad.observe(chunk)
+                if chunk.is_speech:
+                    speech_run.append(chunk)
+                else:
+                    speech_run = []
                 if event == BargeIn.START:
                     trace.barge_in_at_ms = _now_ms()
+                    self._barge_in_frames = speech_run
                     tts_task.cancel()
                     try:
                         await tts_task
                     except asyncio.CancelledError:
                         pass
-                    self.budget.record(Stage.TTS, trace.last_audio_out_at_ms - t_tts_start)
-                    return trace
+                    break
                 if tts_task.done():
                     break
-            await tts_task
+            if not tts_task.cancelled():
+                await tts_task
         except asyncio.CancelledError:
             tts_task.cancel()
             raise
 
+        # Time to first audio; 0 when TTS produced none (e.g. barge-in came first).
         self.budget.record(
             Stage.TTS,
             (trace.first_audio_out_at_ms - t_tts_start) if trace.first_audio_out_at_ms else 0,
